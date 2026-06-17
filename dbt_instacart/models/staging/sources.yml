@@ -1,0 +1,100 @@
+version: 2
+
+sources:
+  - name: raw
+    database: instacart_db
+    schema: raw
+    description: >
+      Untransformed Instacart Market Basket data, loaded by ingestion/load_to_snowflake.py
+      with zero transformation -- exact source fidelity. All cleaning, typing, and
+      standardization happens downstream in staging models, never here.
+
+    tables:
+      - name: raw_orders
+        description: "One row per order. Grain: order_id."
+        columns:
+          - name: order_id
+            description: Primary key. Unique identifier for an order.
+          - name: user_id
+            description: Foreign key to the user who placed the order.
+          - name: eval_set
+            description: >
+              Kaggle competition artifact ('prior' or 'train') indicating which
+              Kaggle competition split this order belonged to. Not meaningful for
+              this project's purposes beyond explaining the order_products split --
+              see raw_order_products_prior / raw_order_products_train below.
+          - name: order_number
+            description: Sequence number of this order within the user's order history (1 = first order).
+          - name: order_dow
+            description: Day of week the order was placed, 0-6.
+          - name: order_hour_of_day
+            description: >
+              Hour of day the order was placed, stored as a zero-padded string
+              (e.g. "08") in raw to preserve exact source fidelity. Cast to integer
+              explicitly in stg_orders -- see BUILD_LOG.md for why this was made an
+              explicit, deliberate casting decision rather than left to inference.
+          - name: days_since_prior_order
+            description: >
+              Days since the user's previous order. NULL on every user's first order
+              (order_number = 1) -- this is expected and structurally necessary, not
+              a data quality defect, since a first order has no prior order to
+              measure against. Do not apply a blanket not_null test to this column.
+
+      - name: raw_products
+        description: "Product reference table. Grain: product_id."
+        columns:
+          - name: product_id
+            description: Primary key.
+          - name: product_name
+            description: Product display name.
+          - name: aisle_id
+            description: Foreign key to raw_aisles.
+          - name: department_id
+            description: Foreign key to raw_departments.
+
+      - name: raw_aisles
+        description: "Aisle reference table. Grain: aisle_id."
+        columns:
+          - name: aisle_id
+            description: Primary key.
+          - name: aisle
+            description: Aisle display name.
+
+      - name: raw_departments
+        description: "Department reference table. Grain: department_id."
+        columns:
+          - name: department_id
+            description: Primary key.
+          - name: department
+            description: Department display name.
+
+      - name: raw_order_products_prior
+        description: >
+          Order line items (one row per product within an order) for the 'prior'
+          eval_set split. Schema-identical to raw_order_products_train -- the split
+          is a Kaggle ML-competition artifact, not a meaningful business distinction
+          for this project. Unioned with raw_order_products_train in stg_order_products.
+        columns:
+          - name: order_id
+            description: Foreign key to raw_orders.
+          - name: product_id
+            description: Foreign key to raw_products.
+          - name: add_to_cart_order
+            description: Sequence position in which this product was added to the cart.
+          - name: reordered
+            description: 1 if this product was ordered by this user in a previous order, else 0.
+
+      - name: raw_order_products_train
+        description: >
+          Order line items for the 'train' eval_set split. Schema-identical to
+          raw_order_products_prior -- see that table's description for why these
+          two tables exist separately and how they're reconciled in staging.
+        columns:
+          - name: order_id
+            description: Foreign key to raw_orders.
+          - name: product_id
+            description: Foreign key to raw_products.
+          - name: add_to_cart_order
+            description: Sequence position in which this product was added to the cart.
+          - name: reordered
+            description: 1 if this product was ordered by this user in a previous order, else 0.

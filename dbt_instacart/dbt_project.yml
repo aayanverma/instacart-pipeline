@@ -1,0 +1,30 @@
+name: "dbt_instacart"
+version: "1.0.0"
+config-version: 2
+
+# This must match the profile name in ~/.dbt/profiles.yml -- dbt uses this to find
+# which connection details to use when it runs.
+profile: "instacart"
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Model materialization config, organized by folder. Staging models default to
+# "view" -- cheap to keep fresh, no storage cost, appropriate since they're thin
+# cleaning/typing layers, not heavy aggregations. Mart models default to "table"
+# since they're queried repeatedly and joined against -- materializing them as
+# actual tables avoids re-running the staging transformations on every downstream
+# query. fact_orders overrides this further at the model level (Layer 4) to use
+# incremental materialization instead of a full table rebuild every run.
+models:
+  dbt_instacart:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
