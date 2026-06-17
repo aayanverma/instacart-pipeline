@@ -1,0 +1,40 @@
+# --- Credentials & secrets ---
+.env
+*.env
+profiles.yml
+**/secrets/
+*.pem
+*.key
+
+# --- Raw data (never commit the dataset itself) ---
+data/raw_sample/*
+!data/raw_sample/.gitkeep
+*.csv
+*.csv.gz
+
+# --- dbt artifacts ---
+dbt_instacart/target/
+dbt_instacart/dbt_packages/
+dbt_instacart/logs/
+dbt_instacart/.user.yml
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# --- Airflow ---
+dags/__pycache__/
+logs/
+airflow.db
+airflow.cfg
+*.pid
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
