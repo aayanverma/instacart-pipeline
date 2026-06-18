@@ -1,0 +1,169 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      Time-of-week bucket dimension. Grain: one row per (order_dow,
+      order_hour_of_day) combination. NOT a conventional calendar date dimension --
+      see model file comment and BUILD_LOG.md.
+    columns:
+      - name: date_key
+        description: Surrogate key, primary key of this table.
+        tests:
+          - unique
+          - not_null
+      - name: order_dow
+        tests:
+          - not_null
+      - name: order_hour_of_day
+        tests:
+          - not_null
+      - name: day_name
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "Sunday",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                  ]
+      - name: time_of_day_bucket
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["morning", "afternoon", "evening", "night"]
+
+  - name: dim_product
+    description: One row per product, with aisle and department resolved.
+    columns:
+      - name: product_id
+        description: Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: product_name
+        tests:
+          - not_null
+      - name: aisle
+        description: >
+          Resolved via left join in the model -- not expected to be NULL given
+          verified referential integrity (see Layer 1), but tested here anyway
+          since this column's entire purpose is to always be populated; a NULL
+          here would mean the dimension failed at the one thing it exists to do.
+        tests:
+          - not_null
+      - name: department
+        tests:
+          - not_null
+
+  - name: dim_user
+    description: One row per user, with stable descriptive attributes.
+    columns:
+      - name: user_id
+        description: Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: total_orders
+        tests:
+          - not_null
+      - name: customer_segment
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["one_time", "occasional", "regular", "frequent"]
+
+  - name: fact_orders
+    description: >
+      One row per order-product line. Grain and unique key: order_product_key
+      (surrogate key of order_id + product_id). Incrementally materialized -- see
+      model file and BUILD_LOG.md for is_incremental() implementation.
+    columns:
+      - name: order_product_key
+        description: Primary key of this table (surrogate key, order_id + product_id).
+        tests:
+          - unique
+          - not_null
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_id
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_user')
+                field: user_id
+      - name: date_key
+        description: >
+          Tested with relationships rather than not_null directly -- a relationships
+          test to a non-nullable parent key implicitly requires non-null values to
+          pass (a NULL can't match a relationship), so this also catches the case
+          this column is unexpectedly NULL, while additionally confirming it
+          resolves to a real dim_date row.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: reordered
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+
+  - name: fct_user_product_features
+    description: >
+      One row per (user_id, product_id) pair the user has ever ordered. JD-driven
+      ML feature mart -- see BUILD_LOG.md for grain reasoning.
+    columns:
+      - name: user_product_key
+        description: Primary key (surrogate key of user_id + product_id).
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_user')
+                field: user_id
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_id
+      - name: times_purchased
+        tests:
+          - not_null
+      - name: reorder_rate
+        description: Must fall within [0, 1] -- it's an average of a 0/1 flag.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true

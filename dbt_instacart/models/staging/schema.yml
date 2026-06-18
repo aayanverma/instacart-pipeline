@@ -1,0 +1,162 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: One row per order, cleaned and type-cast from raw_orders.
+    columns:
+      - name: order_id
+        description: Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Foreign key to the user who placed the order.
+        tests:
+          - not_null
+      - name: eval_set
+        description: >
+          Kaggle competition split artifact. Three values exist: 'prior' (historical
+          order context), 'train' (labeled orders with released order-product line
+          items), and 'test' (orders that exist in this table but have NO
+          corresponding order_products rows anywhere -- Kaggle never released the
+          test split's line items, since doing so would have revealed the
+          competition's answer key). 'test'-eval_set orders are expected and correct
+          to have zero matching rows in fact_orders -- this is not a data quality
+          issue, it's a structural property of the source release.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["prior", "train", "test"]
+      - name: order_number
+        tests:
+          - not_null
+      - name: order_dow
+        description: Day of week, 0-6.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+      - name: order_hour_of_day
+        description: Hour of day, cast to integer in staging.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10,
+                    11,
+                    12,
+                    13,
+                    14,
+                    15,
+                    16,
+                    17,
+                    18,
+                    19,
+                    20,
+                    21,
+                    22,
+                    23,
+                  ]
+      - name: days_since_prior_order
+        description: >
+          Deliberately NOT given a not_null test. NULL on every user's first order
+          (order_number = 1) by design -- see BUILD_LOG.md and sources.yml. A
+          blanket not_null test on this column would fail permanently and
+          incorrectly, since the NULLs it would flag aren't data quality defects.
+
+  - name: stg_order_products
+    description: >
+      One row per order-product line, unioned from raw_order_products_prior and
+      raw_order_products_train.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+      - name: add_to_cart_order
+        tests:
+          - not_null
+      - name: reordered
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: source_eval_set
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["prior", "train"]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - product_id
+            - source_eval_set
+
+  - name: stg_products
+    description: One row per product.
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - not_null
+      - name: product_name
+        tests:
+          - not_null
+      - name: aisle_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_aisles')
+              field: aisle_id
+      - name: department_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_departments')
+              field: department_id
+
+  - name: stg_aisles
+    description: One row per aisle.
+    columns:
+      - name: aisle_id
+        tests:
+          - unique
+          - not_null
+      - name: aisle
+        tests:
+          - not_null
+
+  - name: stg_departments
+    description: One row per department.
+    columns:
+      - name: department_id
+        tests:
+          - unique
+          - not_null
+      - name: department
+        tests:
+          - not_null
